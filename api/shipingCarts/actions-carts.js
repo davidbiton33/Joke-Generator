@@ -102,6 +102,8 @@ exports.getCartByToken = (userToken) => {
                         }
                     }
 
+                    log.info("success to get cart products");
+
                     return resolve({
                         success: true,
                         message: "success to get cart products",
@@ -160,7 +162,7 @@ exports.addToCart = (dataToAdd) => {
                 var newCart = new cartModel();
                 newCart.save(function (err, cartNew) {
 
-                    if(err){
+                    if (err) {
                         log.error("failed to create new cart to the user");
                         return reject({ success: false, type: 12, message: "failed to create new cart to the user, Error: " + err.message });
                     }
@@ -249,7 +251,7 @@ exports.addToCart = (dataToAdd) => {
 
                     }).catch((err) => {
                         log.error("error in check if product exise in products list");
-                        return reject({ success: false, type:13, message: "error in check if product exise in products list" })
+                        return reject({ success: false, type: 13, message: "error in check if product exise in products list" })
                     })
                 });
             }
@@ -278,15 +280,17 @@ exports.addToCart = (dataToAdd) => {
                         }
 
                         // check if the product allready in the cart
-                        var same = 0;
+                        var existProduct = 0;
+                        var existQuantity;
                         for (var product of cartData.products) {
                             if (product.ProductId == dataToAdd.ProductId) {
-                                same = 1;
+                                existProduct = 1;
+                                existQuantity = product.Quantity
                             }
                         }
 
                         // in case its new product in cart
-                        if (same == 0) {
+                        if (existProduct == 0) {
 
                             var updadteData = {
                                 ProductId: dataToAdd.ProductId,
@@ -350,11 +354,13 @@ exports.addToCart = (dataToAdd) => {
                         }
 
                         // in case its exist product in cart
-                        if (same == 1) {
+                        if (existProduct == 1) {
+
+                            var quantityToUpdate = +(dataToAdd.Quantity) + +(existQuantity);
                             cartModel.findOneAndUpdate({
                                 _id: user.CartID,
                                 'products.ProductId': dataToAdd.ProductId
-                            }, { $set: { 'products.$.Quantity': dataToAdd.Quantity } }, { new: true }, async (err, data) => {
+                            }, { $set: { 'products.$.Quantity': quantityToUpdate } }, { new: true }, async (err, data) => {
 
                                 // array of products Ids
                                 var ids = [];
@@ -434,8 +440,299 @@ exports.addToCart = (dataToAdd) => {
 
 
 
+// update product to cart of user \\
+
+exports.updateCart = (dataToAdd) => {
+    return new Promise((resolve, reject) => {
+
+        log.msg("Api Request : update product in cart");
+
+        // get the user cart by his token
+        User.findOne({ Token: dataToAdd.Token }, async (err, user) => {
+
+            // if user not founded
+            if (user == null) {
+                log.error("user not founded by token");
+                return resolve({
+                    success: false, type: 3, message: "not found user by token"
+                })
+            }
+
+            log.info("user founded by token");
+
+            // valid the product exist in DB
+            productModel.findOne({ _id: dataToAdd.ProductId }, async (err, productOnList) => {
+
+                // in case product not in DB
+                if (productOnList == null) {
+                    log.error("not founded product with passen id");
+                    return resolve({ success: false, type: 4, message: "not founded product with passen id" })
+                }
+
+                log.info("user have a cart");
+
+                // get the cart data
+                cartModel.findOne({ _id: user.CartID }, async (err, cartData) => {
+
+                    // in case cart not found in DB
+                    if (cartData == null) {
+                        log.error("not founded cart with this id");
+                        return resolve({ success: false, type: 6, message: "not founded cart with this id" })
+                    }
+
+                    // check if the product allready in the cart
+                    var existProduct = 0;
+                    for (var product of cartData.products) {
+                        if (product.ProductId == dataToAdd.ProductId) {
+                            existProduct = 1;
+                        }
+                    }
+
+                    // in case its new product in cart
+                    if (existProduct == 0) {
+
+                        var updadteData = {
+                            ProductId: dataToAdd.ProductId,
+                            Quantity: dataToAdd.Quantity
+                        }
+
+                        log.msg("try to add the new product to the cart");
+
+                        // update the cart with the new product
+                        cartModel.findOneAndUpdate({ _id: user.CartID },
+                            { $addToSet: { products: updadteData } }
+                            , { new: true }, async (err, kit) => {
+
+                                // array of products Ids
+                                var ids = [];
+
+                                for (var product of kit._doc.products)
+                                    ids.push(product._doc.ProductId);
 
 
+                                // find the product by id and return the data of the product
+                                productModel.find({}, "Name PriceForCustomer Img", async (err, cart) => {
+
+                                    // if not found products in DB by givven ids
+                                    if (cart == null) {
+                                        log.error("products not founded by ids");
+                                        return resolve({
+                                            success: false, type: 9, message: "products not founded by ids"
+                                        })
+                                    }
+
+                                    // add the quantity for every product and price
+                                    for (let i = 0; i < cart.length; i++) {
+                                        cart[i]._doc['Price'] = cart[i].PriceForCustomer
+                                        for (let j = 0; j < kit.products.length; j++) {
+                                            if (cart[i].id == kit.products[j].ProductId) {
+                                                cart[i]._doc['Quantity'] = kit.products[j].Quantity
+                                                break;
+                                            }
+                                        }
+                                    }
+
+                                    log.info("success to update the quantity of product");
+
+                                    return resolve({
+                                        success: true,
+                                        message: "success to update the quantity of product",
+                                        cart: cart
+                                    });
+
+                                }).where('_id').in(ids).exec((err) => {
+                                    if (err) {
+                                        log.error("failed to find products by givven id");
+                                        return reject({ success: false, type: 8, message: "failed to find products by givven id, Error: " + err.message });
+                                    }
+                                })
+                            }).catch((err) => {
+                                log.error("failed to update the new product in cart");
+                                return reject({ success: false, type: 7, message: "failed to update the new product in cart, Error: " + err.message });
+                            })
+                    }
+
+                    // in case its exist product in cart
+                    if (existProduct == 1) {
+                        cartModel.findOneAndUpdate({
+                            _id: user.CartID,
+                            'products.ProductId': dataToAdd.ProductId
+                        }, { $set: { 'products.$.Quantity': dataToAdd.Quantity } }, { new: true }, async (err, data) => {
+
+                            // array of products Ids
+                            var ids = [];
+
+                            for (var product of data._doc.products)
+                                ids.push(product._doc.ProductId);
+
+
+                            // find the product by id and return the data of the product
+                            productModel.find({}, "Name PriceForCustomer Img", async (err, cart) => {
+
+                                // if not found products in DB by givven ids
+                                if (cart == null) {
+                                    log.error("products not founded by ids");
+                                    return resolve({
+                                        success: false, type: 10, message: "products not founded by ids"
+                                    })
+                                }
+
+                                // add the quantity for every product and price
+                                for (let i = 0; i < cart.length; i++) {
+                                    cart[i]._doc['Price'] = cart[i].PriceForCustomer
+                                    for (let j = 0; j < data.products.length; j++) {
+                                        if (cart[i].id == data.products[j].ProductId) {
+                                            cart[i]._doc['Quantity'] = data.products[j].Quantity
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                log.info("success to update the quantity to the exist product");
+
+                                return resolve({
+                                    success: true,
+                                    message: "success to update the quantity to the exist product",
+                                    cart: cart
+                                });
+
+                            }).where('_id').in(ids).exec((err) => {
+                                if (err) {
+                                    log.error("failed to find products by givven id");
+                                    return reject({ success: false, type: 11, message: "failed to find products by givven id, Error: " + err.message });
+                                }
+                            })
+                        })
+                    }
+                }).catch((err) => {
+                    log.error("error in finding cart by id");
+                    return reject({
+                        success: false,
+                        type: 5,
+                        message: "failed in finding cart by id"
+                    })
+                })
+            })
+
+        }).catch((err) => {
+            log.error("error in finding user by token");
+            return reject({
+                success: false,
+                type: 2,
+                message: "failed in finding user by token"
+            })
+        })
+    }).catch((err) => {
+        log.error("error in add to cart api request");
+        return reject({
+            success: false,
+            type: 1,
+            message: "failed in add to cart api request"
+        })
+    })
+}
+
+// ************ \\
+
+
+
+
+
+exports.deleteProductFromCart = (dataToDelete) => {
+
+    return new Promise((resolve, reject) => {
+        log.msg("Api request : delete product from cart");
+
+        // get the user cart by his token
+        User.findOne({ Token: dataToDelete.Token }, async (err, user) => {
+
+            // in case user not founded
+            if (!user) {
+                log.error("user not founded");
+                return resolve({ success: false, type: 3, message: "user not found, check the token" })
+            }
+
+            // find the cart of the user and delete the product from the cart
+
+
+
+
+
+            cartModel.findOneAndUpdate({ _id: user.CartID }, { $pull: { 'products': { ProductId: dataToDelete.ProductId } } }, async (err, deletedProduct) => {
+
+                if (!deletedProduct) {
+                    log.error("not found product in cart");
+                    return resolve({ success: false, type: 5, message: "not found product in cart " })
+                }
+
+                cartModel.findOne({ _id: user.CartID }, async (err, cart) => {
+
+                    if (!cart) {
+                        log.error("not found cart");
+                        return resolve({ success: false, type: 7, message: "not found cart " })
+                    }
+
+
+                    // array of products Ids
+                    var ids = [];
+
+                    for (var product of cart._doc.products)
+                        ids.push(product._doc.ProductId);
+
+
+                    // find the product by id and return the data of the product
+                    productModel.find({}, "Name PriceForCustomer Img", async (err, products) => {
+
+                        // if not found products in DB by givven ids
+                        if (products == null) {
+                            log.error("products not founded by ids");
+                            return resolve({
+                                success: false, type: 9, message: "products not founded by ids"
+                            })
+                        }
+
+                        // add the quantity for every product and price
+                        for (let i = 0; i < products.length; i++) {
+                            products[i]._doc['Price'] = products[i].PriceForCustomer
+                            for (let j = 0; j < cart.products.length; j++) {
+                                if (products[i].id == cart.products[j].ProductId) {
+                                    products[i]._doc['Quantity'] = cart.products[j].Quantity
+                                    break;
+                                }
+                            }
+                        }
+
+                        log.info("success to delete the product");
+
+                        return resolve({
+                            success: true,
+                            message: "success to delete the product",
+                            cart: products
+                        });
+
+                    }).where('_id').in(ids).exec((err) => {
+                        if (err) {
+                            log.error("failed to find products by givven id");
+                            return reject({ success: false, type: 8, message: "failed to find products by givven id, Error: " + err.message });
+                        }
+                    })
+                }).catch((err) => {
+                    log.error("error in finding cart");
+                    return reject({ success: false, type: 6, message: "error in finding cart " + err.message });
+                })
+            }).catch((err) => {
+                log.error("error in finding cart and delete the product");
+                return reject({ success: false, type: 4, message: "error in finding cart and delete the product " + err.message });
+            })
+        }).catch((err) => {
+            log.error("error in finding user and return the cart");
+            return reject({ success: false, type: 2, message: "error in finding user and return the cart, Error : " + err.message });
+        })
+    }).catch((err) => {
+        log.error("error in api request to delete product from the cart");
+        return reject({ success: false, type: 1, message: "error in api request to delete product from the cart , Error : " + err.message });
+    })
+}
 
 
 
@@ -501,7 +798,7 @@ exports.setCartByUserToken = (dataCart) => {
 
             log.info("succes to get cart id");
 
-            cartModel.findOneAndUpdate({ "_id": cartId._doc.CartID }, { Products: dataCart.Products }, { new: true }, async (err, cart) => {
+            cartModel.findOneAndUpdate({ "_id": cartId._doc.CartID }, { $set: { Products: dataCart.Products } }, { new: true }, async (err, cart) => {
 
                 // if get an error
                 if (err) {

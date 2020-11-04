@@ -4,7 +4,9 @@ var router = express.Router();
 const {
     getCartByToken,
     setCartByUserToken,
-    addToCart
+    addToCart,
+    updateCart,
+    deleteProductFromCart
 } = require('./actions-carts')
 
 
@@ -38,6 +40,30 @@ router.post('/set-cart', async (req, res) => {
 
 router.post('/add-to-cart', async (req, res) => {
     res.send(await addToCart(req.body));
+});
+
+/* ******************* */
+
+
+
+
+
+/* update product to cart */
+
+router.post('/update-product-in-cart', async (req, res) => {
+    res.send(await updateCart(req.body));
+});
+
+/* ******************* */
+
+
+
+
+
+/* delete product from cart */
+
+router.post('/delete-product-from-cart', async (req, res) => {
+    res.send(await deleteProductFromCart(req.body));
 });
 
 /* ******************* */
