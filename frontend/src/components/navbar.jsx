@@ -4,7 +4,7 @@ import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline'
 
 const navigation = [
   { name: 'API', href: 'https://jokes-generator-with-api-bjnu.vercel.app/' },
-  { name: 'Github', href: 'https://github.com/DevRohit06/Jokes-Generator-With-API' },
+  { name: 'Github', href: 'https://github.com/davidbiton33/Joke-Generator' },
 
 ]
 
